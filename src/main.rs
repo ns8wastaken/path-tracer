@@ -71,14 +71,9 @@ fn main() {
     }
     set_shader_val!(shader, "u_sphereCount", spheres.len() as i32);
 
-    let blank_texture = {
-        rl
-            .load_texture_from_image(&rt, &rl::Image::gen_image_color(
-                screen_width as i32,
-                screen_height as i32,
-                rl::Color::WHITE
-            )).unwrap()
-    };
+    let blank_texture = rl
+        .load_render_texture(&rt, screen_width as u32, screen_height as u32)
+        .unwrap();
 
     while !rl.window_should_close() {
         camera.update(&rl);
