@@ -1,7 +1,4 @@
-mod rl {
-    pub use raylib::prelude::*;
-}
-
+mod rl { pub use raylib::prelude::*; }
 mod utils;
 mod camera;
 mod sphere;
@@ -10,8 +7,7 @@ use raylib::{prelude::{RaylibDraw, RaylibShaderModeExt}, shaders::RaylibShader};
 use camera::Camera;
 use sphere::Sphere;
 
-const FOV: f32 = 50.0;
-const NEAR_CLIP_DIST: f32 = 1.0;
+const NEAR_CLIP_DIST: f32 = 0.1;
 // const FAR_CLIP_DIST: f32 = 100.0;
 
 macro_rules! set_shader_val {
@@ -26,9 +22,8 @@ fn main() {
         .title("Hello, World")
         .build();
 
-    unsafe {
-        gl::load_with(|s| rl.get_window_handle() as *const _);
-    }
+    gl_loader::init_gl();
+    gl::load_with(|s| gl_loader::get_proc_address(s) as _);
 
     rl.disable_cursor();
 
@@ -41,17 +36,25 @@ fn main() {
         Some("src/shaders/spheretrace.frag")
     );
 
-    set_shader_val!(shader, "u_fov", FOV);
-    set_shader_val!(shader, "u_nearClip", NEAR_CLIP_DIST);
-    set_shader_val!(shader, "u_screenWidth", screen_width as i32);
-    set_shader_val!(shader, "u_screenHeight", screen_height as i32);
-
     let mut camera = Camera::new(
         rl::Vector3::new(-0.7891882, 1.6806532, -2.4450927),
         rl::Vector3::new(0.17874563, -0.25690365, 0.25920606),
+        50.0,
     );
 
-    let spheres = [Sphere::new(0.0, 0.0, 0.0, 1.0)];
+    set_shader_val!(shader, "u_fov", camera.fov);
+    set_shader_val!(shader, "u_nearClipDist", NEAR_CLIP_DIST);
+    set_shader_val!(shader, "u_screenWidth", screen_width as i32);
+    set_shader_val!(shader, "u_screenHeight", screen_height as i32);
+
+    let spheres = [
+        Sphere::new(0.0, 0.0, 0.0, 1.0),
+        Sphere::new(1.0, 0.0, 0.0, 1.0),
+        Sphere::new(-1.0, 0.0, 0.0, 1.0),
+        Sphere::new(0.0, 1.0, 0.0, 1.0),
+        Sphere::new(0.0, 2.0, 0.0, 1.0),
+        Sphere::new(0.0, 3.0, 0.0, 1.0),
+    ];
 
     let mut ssbo: u32 = 0;
     unsafe {
@@ -68,27 +71,31 @@ fn main() {
     }
     set_shader_val!(shader, "u_sphereCount", spheres.len() as i32);
 
+    let blank_texture = {
+        rl
+            .load_texture_from_image(&rt, &rl::Image::gen_image_color(
+                screen_width as i32,
+                screen_height as i32,
+                rl::Color::WHITE
+            )).unwrap()
+    };
+
     while !rl.window_should_close() {
-        camera.update_camera(&rl);
+        camera.update(&rl);
 
         set_shader_val!(shader, "u_cameraPos", camera.position);
         set_shader_val!(shader, "u_cameraTarget", camera.target);
-        set_shader_val!(shader, "u_cameraForward", camera.forward);
-        set_shader_val!(shader, "u_cameraUp", camera.up);
-        set_shader_val!(shader, "u_cameraRight", camera.right);
+        set_shader_val!(shader, "u_cameraUp", camera.get_up().normalized());
 
         let mut d = rl.begin_drawing(&rt);
+        d.clear_background(rl::Color::BLACK);
 
-        // Rotund
-        {
+        { // Balls :)
             let mut s = d.begin_shader_mode(&mut shader);
-            s.draw_rectangle_pro(
-                rl::Rectangle::new(
-                    0.0,
-                    0.0,
-                    screen_width as f32,
-                    screen_height as f32,
-                ),
+            s.draw_texture_pro(
+                &blank_texture,
+                rl::Rectangle::new(0.0, 0.0, screen_width as f32, screen_height as f32),
+                rl::Rectangle::new(0.0, 0.0, screen_width as f32, screen_height as f32),
                 rl::Vector2::new(0.0, 0.0),
                 0.0,
                 rl::Color::WHITE,

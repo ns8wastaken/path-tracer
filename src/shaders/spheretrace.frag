@@ -1,18 +1,17 @@
 #version 430
 
 in vec2 fragTexCoord;
+
 uniform vec3 u_cameraPos;
 uniform vec3 u_cameraTarget;
-uniform vec3 u_cameraForward;
 uniform vec3 u_cameraUp;
-uniform vec3 u_cameraRight;
 
 uniform int u_screenWidth;
 uniform int u_screenHeight;
 
 uniform float u_fov;
 
-uniform float u_nearClip;
+uniform float u_nearClipDist;
 
 struct Sphere {
     vec3 center;
@@ -33,44 +32,53 @@ struct Ray {
 
 void main() {
     // Normalized screen coordinates (0..1)
-    vec2 uv = gl_FragCoord.xy / vec2(u_screenWidth, u_screenHeight);
+    vec2 uv = fragTexCoord;
 
     float aspectRatio = float(u_screenWidth) / float(u_screenHeight);
 
-    // Calculate positions
-    float halfHeight = tan(u_fov * 0.5) * u_nearClip;
+    vec3 cameraForward = normalize(u_cameraTarget - u_cameraPos);
+    vec3 cameraRight = normalize(cross(u_cameraUp, cameraForward));
+
+    float halfHeight = tan(u_fov * 0.5);
     float halfWidth = halfHeight * aspectRatio;
 
-    vec3 screenCenter = u_cameraPos + u_cameraForward * u_nearClip;
+    // Calculate frustum stuff
+    vec2 ndc = uv * 2.0 - 1.0;
 
-    vec3 pixelPos = screenCenter
-        + u_cameraUp * halfHeight * (2.0 * uv.y - 1)
-        + u_cameraRight * halfWidth * (2.0 * uv.x - 1);
-
-    vec3 rayDir = normalize(pixelPos - u_cameraPos);
+    vec3 rayOrigin = u_cameraPos;
+    vec3 rayDir = normalize(
+        cameraForward
+        + ndc.x * halfWidth * cameraRight
+        + ndc.y * halfHeight * u_cameraUp
+    );
 
     // Calculate hit
-    float closestT = 1e20;
+    float closestT = 1.0 / 0.0; // Dividing by 0 gives inf, we question not the ways of this world
     vec3 hitNormal = vec3(0.0);
     bool hitSomething = false;
 
     for (int i = 0; i < u_sphereCount; i++) {
         Sphere s = b_spheres[i];
 
-        vec3 v = pixelPos - s.center;
+        vec3 v = rayOrigin - s.center;
         float b = dot(v, rayDir);
         float c = dot(v, v) - s.radius * s.radius;
         float d = b * b - c;
 
-        if (!((c > 0.0 && b > 0.0) || d < 0.0)) {
-            float t = max(0.0, -b - sqrt(d));
-            if (t < closestT) {
-                closestT = t;
-                vec3 position = pixelPos + rayDir * t;
-                hitNormal = (position - s.center) / s.radius;
-                hitSomething = true;
-            }
+        if ((c > 0.0 && b > 0.0) || d < 0.0) {
+            continue;
         }
+
+        float t = max(0.0, -b - sqrt(d));
+
+        if (t >= closestT) {
+            continue;
+        }
+
+        closestT = t;
+        vec3 position = rayOrigin + rayDir * t;
+        hitNormal = (position - s.center) / s.radius;
+        hitSomething = true;
     }
 
     if (hitSomething) {
